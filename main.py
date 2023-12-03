@@ -9,7 +9,7 @@ from trainer.trainer import Trainer, model_evaluate
 from models.TC import TC
 from utils import _calc_metrics, copy_Files
 from models.dim_mixing_model import dim_mixing_model
-
+from models.original_model import base_Model
 # Args selections
 start_time = datetime.now()
 
@@ -18,6 +18,8 @@ parser = argparse.ArgumentParser()
 
 ######################## Model parameters ########################
 home_dir = os.getcwd()
+parser.add_argument('--base_model', action='store_true', help='A boolean flag')
+parser.add_argument('--dim_model', action='store_true', help='A boolean flag')
 parser.add_argument('--experiment_description', default='Exp1', type=str,
                     help='Experiment Description')
 parser.add_argument('--run_description', default='run1', type=str,
@@ -84,7 +86,11 @@ train_dl, valid_dl, test_dl = data_generator(data_path, configs, training_mode)
 logger.debug("Data loaded ...")
 
 # Load Model
-model = dim_mixing_model(configs).to(device)
+if(args.dim_model ):
+    model = dim_mixing_model(configs).to(device)
+elif(args.base_model):
+    model = base_Model(configs).to(device)
+
 temporal_contr_model = TC(configs, device).to(device)
 
 if training_mode == "fine_tune":

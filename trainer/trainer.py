@@ -55,7 +55,8 @@ def model_train(model, temporal_contr_model, model_optimizer, temp_cont_optimize
         # send to device
         data, labels = data.float().to(device), labels.long().to(device)
         aug1, aug2 = aug1.float().to(device), aug2.float().to(device)
-
+        if torch.isnan(data).any():
+            data = torch.nan_to_num(data, nan=0.0)
         # optimizer
         model_optimizer.zero_grad()
         temp_cont_optimizer.zero_grad()
@@ -121,7 +122,8 @@ def model_evaluate(model, temporal_contr_model, test_dl, device, training_mode):
     with torch.no_grad():
         for data, labels, _, _ in test_dl:
             data, labels = data.float().to(device), labels.long().to(device)
-
+            if torch.isnan(data).any():
+                data = torch.nan_to_num(data, nan=0.0)
             if training_mode == "self_supervised":
                 pass
             else:
