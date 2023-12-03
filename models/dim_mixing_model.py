@@ -15,9 +15,9 @@ os.environ['PYTORCH_ENABLE_MPS_FALLBACK'] = '1'
 
 __all__ = ['Transpose', 'get_activation_fn', 'moving_avg', 'series_decomp', 'PositionalEncoding', 'SinCosPosEncoding', 'Coord2dPosEncoding', 'Coord1dPosEncoding', 'positional_encoding']           
 
-class base_Model(nn.Module):
+class dim_mixing_model(nn.Module):
     def __init__(self, configs, patch_len=32, d_model=128, n_layers=4, n_heads=4, res_attention = True):
-        super(base_Model, self).__init__()
+        super(dim_mixing_model, self).__init__()
 
         # Convolutional blocks from base_Model
         self.conv_block1 = nn.Sequential(
@@ -51,7 +51,7 @@ class base_Model(nn.Module):
             patch_len=patch_len,
             d_model=d_model,
             padding_patch='end', # Assuming padding at the end
-            num_features=configs.features_len,
+            num_features=configs.input_channels,
             n_layers=n_layers,
             n_heads=n_heads,
             res_attention=res_attention
@@ -79,7 +79,6 @@ class base_Model(nn.Module):
         x = self.conv_block1(x)
         x = self.conv_block2(x)
         x = self.conv_block3(x)
-
         x_flat = x.reshape(x.shape[0], -1)
 
         logits = self.logits(x_flat)
@@ -147,117 +146,6 @@ class ChannelMixing(nn.Module):
         u = u[:,:,:orig_shape[-1]]
         return u
     
-class ChannelMixing(nn.Module):
-    def __init__(self, patch_len, d_model,  padding_patch, num_features, n_layers = 1, n_heads = 1, res_attention=True, **kwargs):
-        super().__init__()
-        self.patch_len = patch_len
-        self.d_model = d_model
-        self.n_heads = n_heads
-        self.padding_patch = padding_patch
-        self.num_features = num_features
-        self.res_attention = res_attention
-        if padding_patch == 'end': # can be modified to general case
-            self.padding_patch_layer = nn.ReplicationPad1d((0, patch_len)) 
-
-        # self.transformer = TSTEncoderLayer(q_len=0,d_model = d_model, n_heads = n_heads, res_attention=True)
-        self.encoder_layers = nn.ModuleList([TSTEncoderLayer(q_len=0,d_model = d_model, n_heads = n_heads, res_attention = res_attention) for i in range(n_layers)])
-
-        self.W_P = nn.Linear(patch_len, d_model)
-        self.W_pos = positional_encoding('zeros', True, self.num_features, self.d_model)
-        self.F_P = nn.Linear(d_model, patch_len)
-        self.dropout = nn.Dropout(0)
-        self.log_to_wandb = kwargs['log_to_wandb'] if 'log_to_wandb' in kwargs else False
-
-    def forward(self , u):                                                                      # z: [bs x nvars x seq_len]
-        orig_shape = u.shape
-        if self.padding_patch == 'end':                             
-            u = self.padding_patch_layer(u)
-        
-        u = u.unfold(dimension=-1, size=self.patch_len, step=self.patch_len)                    # z : [bs x nvar x patch_num x patch_len]
-        u = u.permute(0,2,1,3)                                                                  # z : [bs x patch_num x nvar x patch_len]
-        orig_u = u.clone()
-        patch_num = u.shape[1]                                                                  # z : [bs x patch_num x nvar x patch_len]
-        u = torch.reshape(u, (u.shape[0]*u.shape[1],u.shape[2],u.shape[3]))                     # z : [bs * patch_num x nvar x patch_len]
-
-        u = self.W_P.forward(u)                                                                 # z : [bs * patch_num x nvar x d_model]
-        u = self.dropout(u + self.W_pos)
-        
-        # u, attn = self.transformer(u)                                                           # z : [bs * patch_num x nvar x d_model]
-
-        
-        output = u
-        scores = None
-        if self.res_attention:
-            for mod in self.encoder_layers: 
-                output, scores = mod(output, prev=scores)
-        else:
-            for mod in self.encoder_layers: output = mod(output)
-        u = output
-        # attn is of shape [bs * patch_num x nvar x nvar] pick the ith element and plot to wandb.
-        
-        u = self.F_P.forward(u)                                                                 # z : [bs * patch_num x nvar x patch_len]
-        u = torch.reshape(u, (-1,patch_num,u.shape[-2],u.shape[-1]))                            # z : [bs x patch_num x nvar x patch_len]
-        # if self.log_to_wandb and epoch_num %10 == 0:
-            # self.log_attn_to_wandb(attn, orig_u, u)
-        u = u.permute(0,2,3,1)                                                                  # z : [bs x nvar x patch_num x patch_len]
-        u = torch.reshape(u, (u.shape[0],u.shape[1],u.shape[2]*u.shape[3]))                     # z : [bs x nvar x seq_len]
-
-        u = self.restore_shape(orig_shape, u)
-        return u
-    
-    def restore_shape(self, orig_shape, u):
-        u = u[:,:,:orig_shape[-1]]
-        return u
-    
-    def log_attn_to_wandb(self, attn, orig_tensor, out_tensor):
-        # print(attn.shape, orig_tensor.shape)
-        # torch.Size([2816, 1, 21, 21]) torch.Size([128, 22, 21, 16])
-        num_plots = 1
-        random_batch_nums = torch.randint(0, orig_tensor.size()[0]-1, (num_plots,))
-        random_patch_nums = torch.randint(0, orig_tensor.size()[1]-1, (num_plots,))
-        
-        for i in range(num_plots):
-            chosen_patch =  torch.cat((orig_tensor[random_batch_nums[i]][random_patch_nums[i]][:][:], orig_tensor[random_batch_nums[i]][random_patch_nums[i]+1][:][:]), dim = 1)
-            attn_matrix = attn[random_batch_nums[i] * random_patch_nums[i]][:][:]
-            outm = torch.cat((out_tensor[random_batch_nums[i]][random_patch_nums[i]][:][:], out_tensor[random_batch_nums[i]][random_patch_nums[i]+1][:][:]), dim = 1)
-            self.log_series_and_attn_to_wandb(chosen_patch, attn_matrix, outm)
-    
-
-    def log_series_and_attn_to_wandb(self, series, attn_matrix, outm):
-        import wandb
-        import matplotlib.pyplot as plt
-        import numpy as np
-        # Convert tensors to numpy arrays
-        series_np = series.detach().cpu().numpy()
-        out_np = outm.detach().cpu().numpy()
-        attn_matrix_np = attn_matrix.squeeze(0).detach().cpu().numpy()
-
-        # Create a new figure with 3 rows
-        fig, axs = plt.subplots(nrows=3, figsize=(12, 18))
-
-        # Plot each feature in the series
-        for i in range(series_np.shape[0]):
-            axs[0].plot(series_np[i, :], label=f'Feature {i + 1}')
-        axs[0].legend()
-        axs[0].set_title('Series Features')
-
-        # Plot the output series
-        for i in range(out_np.shape[0]):
-            axs[1].plot(out_np[i, :], label=f'Output {i + 1}')
-        axs[1].legend()
-        axs[1].set_title('Output Series')
-
-        # Plot the attention matrix as a heatmap
-        im = axs[2].imshow(attn_matrix_np, cmap='hot', interpolation='nearest')
-        axs[2].set_title('Attention Matrix')
-        fig.colorbar(im, ax=axs[2], orientation='horizontal')
-
-        # Log the figure to wandb
-        wandb.log({"Series, Output and Attention Matrix": wandb.Image(fig)})
-
-        # Close the figure to free up memory
-        plt.close(fig)
-
 
 class Flatten_Head(nn.Module):
     def __init__(self, individual, n_vars, nf, target_window, head_dropout=0):
@@ -294,8 +182,6 @@ class Flatten_Head(nn.Module):
             x = self.dropout(x)
         return x
         
-        
-    
     
 class TSTiEncoder(nn.Module):  #i means channel-independent
     def __init__(self, c_in, patch_num, patch_len, max_seq_len=1024,
@@ -344,7 +230,6 @@ class TSTiEncoder(nn.Module):  #i means channel-independent
         return z    
             
             
-    
 # Cell
 class TSTEncoder(nn.Module):
     def __init__(self, q_len, d_model, n_heads, d_k=None, d_v=None, d_ff=None, 

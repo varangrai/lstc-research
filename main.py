@@ -8,7 +8,8 @@ from dataloader.dataloader import data_generator
 from trainer.trainer import Trainer, model_evaluate
 from models.TC import TC
 from utils import _calc_metrics, copy_Files
-from models.model import base_Model
+from models.dim_mixing_model import dim_mixing_model
+
 # Args selections
 start_time = datetime.now()
 
@@ -33,6 +34,8 @@ parser.add_argument('--device', default='cuda', type=str,
                     help='cpu or cuda')
 parser.add_argument('--home_path', default=home_dir, type=str,
                     help='Project home directory')
+parser.add_argument('--local', action='store_true', help='A boolean flag')
+
 args = parser.parse_args()
 
 
@@ -43,7 +46,6 @@ data_type = args.selected_dataset
 method = 'TS-TCC'
 training_mode = args.training_mode
 run_description = args.run_description
-
 logs_save_dir = args.logs_save_dir
 os.makedirs(logs_save_dir, exist_ok=True)
 
@@ -82,7 +84,7 @@ train_dl, valid_dl, test_dl = data_generator(data_path, configs, training_mode)
 logger.debug("Data loaded ...")
 
 # Load Model
-model = base_Model(configs).to(device)
+model = dim_mixing_model(configs).to(device)
 temporal_contr_model = TC(configs, device).to(device)
 
 if training_mode == "fine_tune":
@@ -149,5 +151,5 @@ if training_mode != "self_supervised":
     outs = model_evaluate(model, temporal_contr_model, test_dl, device, training_mode)
     total_loss, total_acc, pred_labels, true_labels = outs
     _calc_metrics(pred_labels, true_labels, experiment_log_dir, args.home_path)
-
+    
 logger.debug(f"Training time is : {datetime.now()-start_time}")
