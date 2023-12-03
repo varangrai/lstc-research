@@ -29,9 +29,10 @@ def Trainer(model, temporal_contr_model, model_optimizer, temp_cont_optimizer, t
         logger.debug(f'\nEpoch : {epoch}\n'
                      f'Train Loss     : {train_loss:.4f}\t | \tTrain Accuracy     : {train_acc:2.4f}\n'
                      f'Valid Loss     : {valid_loss:.4f}\t | \tValid Accuracy     : {valid_acc:2.4f}')
-        print(device)
-        if(device=='cpu'):
-            sys.exit(1);
+        print(device, type(device))
+        if(device.type=='cpu'):
+            print("Ede")
+            sys.exit(1)
     os.makedirs(os.path.join(experiment_log_dir, "saved_models"), exist_ok=True)
     chkpoint = {'model_state_dict': model.state_dict(), 'temporal_contr_model_state_dict': temporal_contr_model.state_dict()}
     torch.save(chkpoint, os.path.join(experiment_log_dir, "saved_models", f'ckp_last.pt'))
@@ -124,6 +125,7 @@ def model_evaluate(model, temporal_contr_model, test_dl, device, training_mode):
             data, labels = data.float().to(device), labels.long().to(device)
             if torch.isnan(data).any():
                 data = torch.nan_to_num(data, nan=0.0)
+            print(data, labels)
             if training_mode == "self_supervised":
                 pass
             else:

@@ -1,5 +1,5 @@
 __all__ = ['PatchTST_backbone']
-
+import sys
 # Cell
 from typing import Callable, Optional
 import torch
@@ -80,7 +80,8 @@ class dim_mixing_model(nn.Module):
         x = self.conv_block2(x)
         x = self.conv_block3(x)
         x_flat = x.reshape(x.shape[0], -1)
-
+        # print(x_flat.shape,x.shape)
+        # sys.exit(1)
         logits = self.logits(x_flat)
         return logits, x
 
