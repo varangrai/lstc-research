@@ -1,14 +1,14 @@
 class Config(object):
     def __init__(self):
         # model configs
-        self.input_channels = 3        # num of features
+        self.input_channels = 6
         self.kernel_size = 8
         self.stride = 1
         self.final_out_channels = 128
 
         self.num_classes = 4
         self.dropout = 0.35
-        self.features_len = 28
+        self.features_len = 15
 
         # training configs
         self.num_epoch = 40
@@ -25,6 +25,7 @@ class Config(object):
         self.Context_Cont = Context_Cont_configs()
         self.TC = TC()
         self.augmentation = augmentations()
+
 
 class augmentations(object):
     def __init__(self):

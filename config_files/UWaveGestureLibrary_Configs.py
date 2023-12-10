@@ -6,9 +6,9 @@ class Config(object):
         self.stride = 1
         self.final_out_channels = 128
 
-        self.num_classes = 4
+        self.num_classes = 8
         self.dropout = 0.35
-        self.features_len = 28
+        self.features_len = 42
 
         # training configs
         self.num_epoch = 40
